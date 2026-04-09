@@ -288,17 +288,34 @@ def _orient(pixels):
     return out
 
 
+# Delta-update state. Tracking what we last sent lets us push only the
+# pixels that actually changed each frame, dramatically shrinking the
+# JSON payload over Wi-Fi.
+_last_pushed = None        # last full physical buffer we successfully sent
+_last_brightness = None    # last brightness we successfully sent
+_force_full_next = True    # force a full push (after errors / startup)
+
+
 def push_pixels(pixels, brightness=DEFAULT_BRI):
+    global _last_pushed, _last_brightness, _force_full_next
     pixels = _orient(pixels)
+
+    full_push = _force_full_next or _last_pushed is None
+
     i_array = []
     for idx, color in enumerate(pixels):
-        i_array.append(idx)
-        i_array.append(color)
-    payload = {
-        "on": True,
-        "bri": brightness,
-        "seg": [{"id": 0, "i": i_array}],
-    }
+        if full_push or _last_pushed[idx] != color:
+            i_array.append(idx)
+            i_array.append(color)
+
+    bri_changed = brightness != _last_brightness
+    if not i_array and not bri_changed:
+        return  # nothing to update — skip the network call entirely
+
+    payload = {"on": True, "bri": brightness}
+    if i_array:
+        payload["seg"] = [{"id": 0, "i": i_array}]
+
     try:
         req = urllib.request.Request(
             f"{WLED_URL}/json/state",
@@ -308,8 +325,14 @@ def push_pixels(pixels, brightness=DEFAULT_BRI):
         )
         with urllib.request.urlopen(req, timeout=2) as resp:
             resp.read()
+        # Success — commit the new state to the cache.
+        _last_pushed = list(pixels)
+        _last_brightness = brightness
+        _force_full_next = False
     except Exception:
-        pass
+        # Force a full re-push on the next successful tick to recover
+        # from any state divergence between us and WLED.
+        _force_full_next = True
 
 
 def push_off():
