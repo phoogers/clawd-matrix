@@ -233,9 +233,13 @@ def read_all_sessions():
 
 
 def aggregate(sessions):
-    """Return (effective_state, started_time, total_subagents)."""
+    """Return (effective_state, started_time, total_subagents).
+
+    Returns "off" when there are no active Claude Code sessions — the
+    main loop treats this as a signal to push the matrix off and exit.
+    """
     if not sessions:
-        return "idle", time.time(), 0
+        return "off", time.time(), 0
 
     total_subagents = sum(s.get("subagents", 0) for s in sessions)
     now = time.time()
@@ -348,6 +352,8 @@ def main():
     last_state = None
     last_started = None
     idle_since = None
+    startup_time = time.time()
+    STARTUP_GRACE = 1.0  # avoid races where the spawning hook hasn't synced yet
 
     try:
         while True:
@@ -357,13 +363,23 @@ def main():
             sessions = read_all_sessions()
             state, started, subagents = aggregate(sessions)
 
+            # No active Claude Code sessions → turn off and exit immediately
+            # (after a brief startup grace period to avoid spawning races).
+            if state == "off":
+                if (tick_start - startup_time) >= STARTUP_GRACE:
+                    push_off()
+                    break
+                # During the grace window, just sleep without rendering.
+                time.sleep(max(0, FRAME_INTERVAL - (time.time() - tick_start)))
+                continue
+
             # Reset frame counter on state transitions.
             if state != last_state or started != last_started:
                 frame = 0
                 last_state = state
                 last_started = started
 
-            # Auto-shutdown logic — only counts pure-idle time.
+            # Auto-shutdown logic — only counts pure-idle time with sessions present.
             if state == "idle":
                 if idle_since is None:
                     idle_since = tick_start
