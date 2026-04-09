@@ -1,0 +1,10 @@
+.env
+.flash.pid
+.flash_prev_*
+.clawd_state.json
+.clawd_daemon.json
+.clawd_sessions/
+reference/
+__pycache__/
+*.pyc
+.claude/settings.local.json
