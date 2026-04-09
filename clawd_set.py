@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """Set the Clawd state from a Claude Code hook.
 
-Reads the hook's JSON payload from stdin to get session_id, then writes
-per-session state to .clawd_sessions/<session_id>.json. Auto-spawns the
-daemon if it isn't running.
+Writes per-session state to .clawd_sessions/cwd-<hash>.json (one file
+per project directory) and auto-spawns the daemon if it isn't running.
 
 Usage from hooks:
     python clawd_set.py <state>
@@ -31,18 +30,17 @@ SPECIAL = {"subagent_start", "subagent_stop", "session_end"}
 
 
 def get_session_id() -> str:
-    """Extract session_id from the hook's stdin JSON payload, with fallback."""
-    try:
-        if not sys.stdin.isatty():
-            raw = sys.stdin.read()
-            if raw.strip():
-                data = json.loads(raw)
-                sid = data.get("session_id")
-                if sid:
-                    return sid
-    except Exception:
-        pass
-    # Fallback: stable id from cwd so each project gets its own bucket
+    """Stable per-project session id derived from the current working
+    directory. We deliberately do NOT read the hook's stdin JSON, even
+    though it carries Claude Code's real session_id, because some hook
+    invocations don't deliver stdin reliably (manual testing, certain
+    async paths). Mixing the two strategies produced ghost session
+    files that kept the daemon alive after Claude Code had quit.
+
+    Tradeoff: two Claude Code windows opened in the exact same project
+    directory will share one session bucket. Closing one will briefly
+    flush the daemon; the other window's next hook event respawns it.
+    """
     return "cwd-" + hashlib.md5(os.getcwd().encode()).hexdigest()[:8]
 
 
