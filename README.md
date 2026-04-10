@@ -29,7 +29,7 @@ Both modules are independent — use one, the other, or both.
 
 | State        | Animation                                          | Trigger                                |
 | ------------ | -------------------------------------------------- | -------------------------------------- |
-| `idle`       | Clawd looks around in dim Anthropic orange         | Default; auto after transient states   |
+| `idle`       | Configurable preset + color: look-around or DVD bounce; orange, rainbow, or color-on-hit | Default; auto after transient states   |
 | `working`    | Clawd paces left↔right across the matrix           | `UserPromptSubmit`, `PostToolUse`      |
 | `working` (long) | Walks at double speed                          | After 30 s in `working`                |
 | `done`       | Happy dance with flashing **green** background     | `Stop` (Claude finished responding)    |
@@ -43,8 +43,9 @@ Both modules are independent — use one, the other, or both.
 Other niceties:
 
 - **Multi-session aware** — runs one daemon for all your concurrent Claude Code sessions. Highest-priority transient state wins (`permission > error > compact > done > boot`), then any working session, then idle.
-- **Auto-shutdown** — daemon turns the matrix off and exits after 10 minutes of pure idle, and respawns automatically the next time a hook fires.
+- **Auto-shutdown** — daemon turns the matrix off and exits immediately when the last Claude Code session ends, or after 10 minutes of pure idle with sessions still open. Respawns automatically the next time a hook fires.
 - **Transient auto-return** — `done`, `permission`, `error`, and `compact` revert to `idle` after a short duration.
+- **Delta pixel updates** — only changed pixels are pushed each frame, keeping the JSON payload small and the animation smooth over Wi-Fi.
 - **8 fps rendering** over the WLED JSON API; the daemon does not depend on any extra libraries.
 
 ---
@@ -110,7 +111,7 @@ No third-party Python packages needed — the daemon uses only the standard libr
 ### 1. Clone the repo
 
 ```bash
-git clone https://github.com/<your-username>/claudenotify.git
+git clone https://github.com/phoogers/claudenotify.git
 cd claudenotify
 ```
 
@@ -131,6 +132,17 @@ Edit `.env`:
 WLED_URL=http://192.168.1.50         # your WLED device URL or http://wled.local
 WLED_WIDTH=16
 WLED_HEIGHT=16
+WLED_MIRROR_X=false                  # flip sprite horizontally if it appears mirrored
+WLED_MIRROR_Y=false                  # flip sprite vertically if matrix is upside down
+
+# Idle animation preset: "default" (look-around) or "dvd" (bouncing)
+IDLE_MODE_PRESET=default
+# Idle color: "default" (orange), "rainbow" (hue cycle), or
+#             "colorchange" (shifts on wall hit, best with dvd)
+IDLE_MODE_COLOR=default
+# Brightness (0–255) for idle and active states
+IDLE_BRIGHTNESS=50
+ACTIVE_BRIGHTNESS=140
 
 # Home Assistant (skip if you don't have one)
 HA_URL=http://homeassistant.local:8123
@@ -302,6 +314,33 @@ python clawd_set.py subagent_stop  # -1 corner spinner
 
 ## Customization
 
+### Idle animation
+
+Two independent knobs in `.env`:
+
+**`IDLE_MODE_PRESET`** — controls animation / movement:
+
+| Preset     | What it does |
+| ---------- | ------------ |
+| `default`  | Clawd looks around, glances down, and occasionally winks. |
+| `dvd`      | Clawd bounces diagonally like the classic DVD screensaver logo. Shows a surprised expression on the rare perfect corner hit. |
+
+**`IDLE_MODE_COLOR`** — controls coloring:
+
+| Color mode     | What it does |
+| -------------- | ------------ |
+| `default`      | Static dim Anthropic orange. |
+| `rainbow`      | Body color cycles smoothly through the full hue wheel (~30 s per cycle). |
+| `colorchange`  | Color changes on each wall hit. Best paired with the `dvd` preset. |
+
+These can be freely mixed — for example, `IDLE_MODE_PRESET=default` + `IDLE_MODE_COLOR=rainbow` gives you the classic look-around animation in cycling rainbow colors.
+
+Night mode (23:00–07:00) overrides both — Clawd switches to a sleeping pose with a drifting "Z" pixel.
+
+![Idle mode combinations](docs/idle_modes.gif)
+
+### Tuning constants
+
 All knobs live near the top of `clawd_daemon.py`:
 
 ```python
@@ -309,13 +348,20 @@ FPS = 8                              # how often we push frames to WLED
 SESSION_STALE_AFTER = 5 * 60         # prune session files older than this
 AUTO_SHUTDOWN_IDLE_AFTER = 10 * 60   # idle this long → daemon exits
 LONG_TASK_THRESHOLD = 30.0           # working > this → fast walk
-SLEEP_HOURS = set(list(range(23, 24)) + list(range(0, 7)))  # 23:00–06:59
+SLEEP_HOURS = set(range(23, 24)) | set(range(0, 7))  # 23:00–06:59
+RAINBOW_CYCLE_SECS = 30.0           # full hue wheel in rainbow mode
 
 ORANGE = {"B": "CD7B5A", ...}        # body color (Anthropic orange)
 YELLOW = {"B": "FFC83D", ...}        # compact warning palette
+```
 
-DEFAULT_BRI = 140                    # WLED brightness 0–255 for active states
-IDLE_BRI = 50                        # dim brightness for idle
+Brightness and idle animation are configured via `.env` — see [Installation](#2-configure-your-devices):
+
+```dotenv
+IDLE_MODE_PRESET=default             # "default" or "dvd"
+IDLE_MODE_COLOR=default              # "default", "rainbow", or "colorchange"
+IDLE_BRIGHTNESS=50                   # 0–255, dim for ambient idle
+ACTIVE_BRIGHTNESS=140                # 0–255, brighter for working/done/error
 ```
 
 ### Adding a new pose
@@ -366,8 +412,10 @@ claudenotify/
 ├── start_clawd_daemon.bat   ← Windows launcher you can drop into shell:startup
 │
 ├── generate_demo_gif.py     ← regenerates docs/animations.gif (requires Pillow)
+├── generate_idle_gif.py     ← regenerates docs/idle_modes.gif (requires Pillow)
 └── docs/
-    └── animations.gif       ← state reference image used in this README
+    ├── animations.gif       ← state reference image used in this README
+    └── idle_modes.gif       ← idle mode combinations reference
 ```
 
 Runtime files (gitignored):
@@ -400,7 +448,7 @@ Runtime files (gitignored):
 - They shouldn't — the daemon is multi-session aware. If you see weird behavior, delete `.clawd_sessions/` and restart Claude Code in each window.
 
 **The walk animation jumps / jitters.**
-- Make sure your WLED is on stable Wi-Fi. The daemon pushes ~256 pixels per frame at 8 fps over JSON. If your network is laggy, drop `FPS` in `clawd_daemon.py` to 5.
+- The daemon uses delta updates (only changed pixels are pushed), so payloads are typically small. If animation is still choppy, check your Wi-Fi stability. You can also drop `FPS` in `clawd_daemon.py` to 5.
 
 **I want to disable everything temporarily.**
 - Kill the daemon: `taskkill /F /PID <pid>` (Windows) or `pkill -f clawd_daemon` (Unix). Comment out the `hooks` block in `~/.claude/settings.json`.

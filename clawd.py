@@ -46,6 +46,21 @@ HEIGHT = int(os.environ.get("WLED_HEIGHT", "16"))
 WLED_MIRROR_X = os.environ.get("WLED_MIRROR_X", "false").lower() in ("1", "true", "yes")
 WLED_MIRROR_Y = os.environ.get("WLED_MIRROR_Y", "false").lower() in ("1", "true", "yes")
 
+# Idle preset (animation style):
+#   "default" — look around, glance down, occasional wink
+#   "dvd"     — DVD-logo diagonal bounce, surprised on corner hits
+IDLE_MODE_PRESET = os.environ.get("IDLE_MODE_PRESET", "default").lower()
+
+# Idle color mode:
+#   "default"          — static dim Anthropic orange
+#   "rainbow"          — slow rainbow hue cycle (~30 s)
+#   "colorchange"      — change color on each wall hit (best with dvd preset)
+IDLE_MODE_COLOR = os.environ.get("IDLE_MODE_COLOR", "default").lower()
+
+# Brightness (0–255) for idle vs active states.
+IDLE_BRIGHTNESS = int(os.environ.get("IDLE_BRIGHTNESS", "50"))
+ACTIVE_BRIGHTNESS = int(os.environ.get("ACTIVE_BRIGHTNESS", "140"))
+
 # Color palette (char -> RRGGBB hex without #)
 COLORS = {
     "B": "CD7B5A",  # body (warm orange/coral)

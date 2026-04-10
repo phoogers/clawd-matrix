@@ -8,6 +8,7 @@ Run manually:  python clawd_daemon.py
 Auto-started by clawd_set.py if no fresh heartbeat is detected.
 """
 
+import colorsys
 import datetime
 import json
 import os
@@ -17,7 +18,10 @@ import urllib.request
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
-from clawd import POSES, WLED_URL, WIDTH, HEIGHT, WLED_MIRROR_X, WLED_MIRROR_Y  # noqa: E402
+from clawd import (  # noqa: E402
+    POSES, WLED_URL, WIDTH, HEIGHT, WLED_MIRROR_X, WLED_MIRROR_Y,
+    IDLE_MODE_PRESET, IDLE_MODE_COLOR, IDLE_BRIGHTNESS, ACTIVE_BRIGHTNESS,
+)
 
 SESSIONS_DIR = os.path.join(SCRIPT_DIR, ".clawd_sessions")
 PID_PATH = os.path.join(SCRIPT_DIR, ".clawd_daemon.json")
@@ -44,8 +48,22 @@ RED_BG = "FF0000"
 BLUE_BG = "0066FF"
 YELLOW_BG = "FFD700"
 
-DEFAULT_BRI = 140
-IDLE_BRI = 50
+DEFAULT_BRI = ACTIVE_BRIGHTNESS
+IDLE_BRI = IDLE_BRIGHTNESS
+RAINBOW_CYCLE_SECS = 30.0  # full rainbow in 30 seconds
+
+
+def _rgb_hex(r, g, b):
+    return f"{int(r * 255):02X}{int(g * 255):02X}{int(b * 255):02X}"
+
+
+def rainbow_palette():
+    """Generate a Clawd color palette that cycles through the rainbow.
+    Uses wall-clock time so the cycle isn't reset by state transitions."""
+    hue = (time.time() % RAINBOW_CYCLE_SECS) / RAINBOW_CYCLE_SECS
+    r, g, b = colorsys.hsv_to_rgb(hue, 0.85, 1.0)
+    sr, sg, sb = colorsys.hsv_to_rgb(hue, 0.85, 0.7)  # shadow = darker
+    return {"B": _rgb_hex(r, g, b), "S": _rgb_hex(sr, sg, sb), "D": "1A1A1A", "W": "FFFFFF"}
 
 # Transient state priority — higher wins when multiple sessions disagree.
 TRANSIENT_PRIORITY = {
@@ -154,6 +172,47 @@ def render_look_around(frame, colors, bg=OFF):
     else:
         pose = "normal"
     return draw_sprite(pose, colors, bg=bg)
+
+
+def _dvd_position():
+    """Compute the DVD-bounce position and bounce count from wall-clock time.
+    Returns (x_pos, y_pos, bounces, at_corner)."""
+    sprite_w = POSES["normal"]["w"]          # 13
+    sprite_h = len(POSES["normal"]["grid"])  # 11
+    x_max = max(WIDTH - sprite_w, 1)         # 3
+    y_max = max(HEIGHT - sprite_h, 1)        # 5
+
+    # ~2.7 steps per second (one pixel move every ~0.375 s)
+    step = int(time.time() * 2.7)
+
+    x_pos = step % (2 * x_max)
+    if x_pos > x_max:
+        x_pos = 2 * x_max - x_pos
+    y_pos = step % (2 * y_max)
+    if y_pos > y_max:
+        y_pos = 2 * y_max - y_pos
+
+    bounces = (step // x_max) + (step // y_max)
+    at_corner = (x_pos in (0, x_max)) and (y_pos in (0, y_max))
+    return x_pos, y_pos, bounces, at_corner
+
+
+def bounce_palette(bounces):
+    """Color palette that shifts hue on each wall bounce (golden ratio)."""
+    hue = (bounces * 0.618033988749895) % 1.0
+    r, g, b = colorsys.hsv_to_rgb(hue, 0.85, 1.0)
+    sr, sg, sb = colorsys.hsv_to_rgb(hue, 0.85, 0.7)
+    return {"B": _rgb_hex(r, g, b), "S": _rgb_hex(sr, sg, sb),
+            "D": "1A1A1A", "W": "FFFFFF"}
+
+
+def render_dvd_bounce(frame, colors, bg=OFF):
+    """DVD-logo-style diagonal bounce. Shows a surprised expression on
+    the rare corner-hit moment. Color is controlled separately via the
+    colors parameter."""
+    x_pos, y_pos, _, at_corner = _dvd_position()
+    pose = "surprised" if at_corner else "normal"
+    return draw_sprite(pose, colors, x_offset=x_pos, y_offset=y_pos, bg=bg)
 
 
 def render_sleeping(frame, colors, bg=OFF):
@@ -418,7 +477,19 @@ def main():
                 if is_sleeping_now():
                     pixels = render_sleeping(frame, ORANGE)
                 else:
-                    pixels = render_look_around(frame, ORANGE)
+                    # Pick color scheme
+                    if IDLE_MODE_COLOR == "rainbow":
+                        idle_colors = rainbow_palette()
+                    elif IDLE_MODE_COLOR == "colorchange":
+                        _, _, bounces, _ = _dvd_position()
+                        idle_colors = bounce_palette(bounces)
+                    else:
+                        idle_colors = ORANGE
+                    # Pick animation
+                    if IDLE_MODE_PRESET == "dvd":
+                        pixels = render_dvd_bounce(frame, idle_colors)
+                    else:
+                        pixels = render_look_around(frame, idle_colors)
                 bri = IDLE_BRI
             elif state == "working":
                 fast = (tick_start - started) >= LONG_TASK_THRESHOLD
