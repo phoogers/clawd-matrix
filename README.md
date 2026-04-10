@@ -46,7 +46,7 @@ Other niceties:
 - **Auto-shutdown** — daemon turns the matrix off and exits immediately when the last Claude Code session ends, or after 10 minutes of pure idle with sessions still open. Respawns automatically the next time a hook fires.
 - **Transient auto-return** — `done`, `permission`, `error`, and `compact` revert to `idle` after a short duration.
 - **Delta pixel updates** — only changed pixels are pushed each frame, keeping the JSON payload small and the animation smooth over Wi-Fi.
-- **8 fps rendering** over the WLED JSON API; the daemon does not depend on any extra libraries.
+- **Smooth rendering** at configurable FPS (default 20) over the WLED JSON API; all animation speeds are wall-clock based and FPS-independent. The daemon does not depend on any extra libraries.
 
 ---
 
@@ -295,10 +295,34 @@ Then `systemctl --user enable --now clawd`.
 
 Run Claude Code. On `SessionStart` you should see the boot pose carousel. Type any prompt — Clawd starts pacing. When Claude finishes, the green happy-dance plays.
 
-You can also drive the daemon manually:
+Or use the **interactive TUI** to test every state with a single keypress:
 
 ```bash
-python clawd_set.py boot           # 3 s pose carousel
+python clawd_tui.py
+```
+
+```
+  ┌─────────────────────────────────────────────┐
+  │          Clawd TUI — State Tester           │
+  ├─────────────────────────────────────────────┤
+  │   [1]  idle          (look-around / dvd)    │
+  │   [2]  working       (walking)              │
+  │   [3]  working+30s   (fast walk)            │
+  │   [4]  done          (happy dance + green)  │
+  │   [5]  permission    (surprised + blue)     │
+  │   [6]  error         (angry + red)          │
+  │   [7]  compact       (yellow warning)       │
+  │   [8]  boot          (pose carousel)        │
+  │   [+]  add subagent     (corner dot)        │
+  │   [-]  remove subagent                      │
+  │   [q]  quit (turns off matrix)              │
+  └─────────────────────────────────────────────┘
+```
+
+You can also drive the daemon from scripts:
+
+```bash
+python clawd_set.py boot           # 4 s pose carousel
 python clawd_set.py working        # walking
 python clawd_set.py done           # happy dance + green
 python clawd_set.py permission     # surprised + blue
@@ -341,18 +365,27 @@ Night mode (23:00–07:00) overrides both — Clawd switches to a sleeping pose 
 
 ### Tuning constants
 
-All knobs live near the top of `clawd_daemon.py`:
+All knobs live near the top of `clawd_daemon.py`. FPS controls render smoothness only — **all animation speeds are wall-clock based** and independent of FPS:
 
 ```python
-FPS = 8                              # how often we push frames to WLED
+FPS = 20                             # render rate (smoothness, not speed)
+
+# ─── Animation timing (all wall-clock, FPS-independent) ───────────
+WALK_STEPS_PER_SEC = 4.0             # normal walk pace
+WALK_FAST_STEPS_PER_SEC = 8.0        # long-task walk pace
+FLASH_PERIOD = 0.4                   # bg flash on/off cycle (seconds)
+POSE_SWITCH_PERIOD = 1.0             # happy↔dancing alternation (seconds)
+BOOT_POSE_PERIOD = 0.5               # boot carousel, time per pose (seconds)
+LOOK_AROUND_CYCLE = 12.0             # full look-around cycle (seconds)
+Z_DRIFT_CYCLE = 2.0                  # sleeping Z drift cycle (seconds)
+DVD_STEPS_PER_SEC = 2.0              # DVD bounce movement speed
+RAINBOW_CYCLE_SECS = 30.0            # full hue wheel (seconds)
+
+# ─── Session / lifecycle ──────────────────────────────────────────
 SESSION_STALE_AFTER = 5 * 60         # prune session files older than this
 AUTO_SHUTDOWN_IDLE_AFTER = 10 * 60   # idle this long → daemon exits
 LONG_TASK_THRESHOLD = 30.0           # working > this → fast walk
-SLEEP_HOURS = set(range(23, 24)) | set(range(0, 7))  # 23:00–06:59
-RAINBOW_CYCLE_SECS = 30.0           # full hue wheel in rainbow mode
-
-ORANGE = {"B": "CD7B5A", ...}        # body color (Anthropic orange)
-YELLOW = {"B": "FFC83D", ...}        # compact warning palette
+SLEEP_HOURS = {23, 0, 1, 2, 3, 4, 5, 6}  # 23:00–06:59
 ```
 
 Brightness and idle animation are configured via `.env` — see [Installation](#2-configure-your-devices):
@@ -391,7 +424,7 @@ WLED_MIRROR_Y=true    # flip vertically (matrix mounted upside down)
 
 These are applied at the last moment before the pixel buffer is sent to WLED, so the sprite authoring coordinates stay consistent.
 
-Sprites are 13 pixels wide and ~11 tall, so they look best on matrices 13×11 or larger. On smaller matrices you'll want to draw new poses.
+All sprites are normalized to 13×13 pixels (13 wide, 13 rows tall with top-padding for shorter poses, bottom-anchored so feet stay put). They look best on matrices 13×13 or larger. On smaller matrices you'll want to draw new poses.
 
 ---
 
@@ -410,6 +443,8 @@ claudenotify/
 ├── clawd_set.py             ← state setter, called by every Claude Code hook
 ├── clawd_daemon.py          ← long-running animation daemon (auto-spawned)
 ├── start_clawd_daemon.bat   ← Windows launcher you can drop into shell:startup
+│
+├── clawd_tui.py             ← interactive TUI for testing all states (press a key → see it)
 │
 ├── generate_demo_gif.py     ← regenerates docs/animations.gif (requires Pillow)
 ├── generate_idle_gif.py     ← regenerates docs/idle_modes.gif (requires Pillow)

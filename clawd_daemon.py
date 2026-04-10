@@ -26,19 +26,27 @@ from clawd import (  # noqa: E402
 SESSIONS_DIR = os.path.join(SCRIPT_DIR, ".clawd_sessions")
 PID_PATH = os.path.join(SCRIPT_DIR, ".clawd_daemon.json")
 
-FPS = 8
+FPS = 20                    # render rate (smoothness); does NOT affect animation speed
 FRAME_INTERVAL = 1.0 / FPS
 
-# How long a session file can go without updates before we consider it stale.
-SESSION_STALE_AFTER = 5 * 60      # 5 minutes
-# How long the matrix can sit in pure idle before the daemon shuts itself down.
-AUTO_SHUTDOWN_IDLE_AFTER = 10 * 60  # 10 minutes
-# Working state duration that triggers the "really cooking" fast walk.
-LONG_TASK_THRESHOLD = 30.0
-# Sleeping mode hours (local time).
+# ─── Session / lifecycle ──────────────────────────────────────────────────
+SESSION_STALE_AFTER = 5 * 60      # prune session files older than this (seconds)
+AUTO_SHUTDOWN_IDLE_AFTER = 10 * 60  # idle this long → daemon exits (seconds)
+LONG_TASK_THRESHOLD = 30.0          # working > this → fast walk (seconds)
 SLEEP_HOURS = set(list(range(23, 24)) + list(range(0, 7)))  # 23:00–06:59
 
-# Color schemes
+# ─── Animation timing (all wall-clock, FPS-independent) ───────────────────
+WALK_STEPS_PER_SEC = 4.0          # normal walk pace
+WALK_FAST_STEPS_PER_SEC = 8.0     # long-task walk pace
+FLASH_PERIOD = 0.4                # bg flash on/off cycle (seconds)
+POSE_SWITCH_PERIOD = 1.0          # happy↔dancing alternation (seconds)
+BOOT_POSE_PERIOD = 0.5            # boot carousel, time per pose (seconds)
+LOOK_AROUND_CYCLE = 12.0          # full look-around cycle (seconds)
+Z_DRIFT_CYCLE = 2.0               # sleeping Z drift cycle (seconds)
+DVD_STEPS_PER_SEC = 2.0           # DVD bounce movement speed
+RAINBOW_CYCLE_SECS = 30.0         # full hue wheel (seconds)
+
+# ─── Colors / brightness ─────────────────────────────────────────────────
 ORANGE = {"B": "CD7B5A", "S": "CA7356", "D": "1A1A1A", "W": "FFFFFF"}
 YELLOW = {"B": "FFC83D", "S": "D49B14", "D": "1A1A1A", "W": "FFFFFF"}
 
@@ -50,7 +58,6 @@ YELLOW_BG = "FFD700"
 
 DEFAULT_BRI = ACTIVE_BRIGHTNESS
 IDLE_BRI = IDLE_BRIGHTNESS
-RAINBOW_CYCLE_SECS = 30.0  # full rainbow in 30 seconds
 
 
 def _rgb_hex(r, g, b):
@@ -78,7 +85,7 @@ TRANSIENT_DURATION = {
     "error": 3.0,
     "compact": 2.5,
     "done": 3.0,
-    "boot": 3.0,
+    "boot": 4.0,
 }
 
 
@@ -128,23 +135,20 @@ def overlay_subagent_indicator(pixels, frame, count):
     # Show count as small dim dots if more than 1
     if count > 1:
         for i in range(min(count - 1, 3)):
-            set_pixel(pixels, cx - i, cy + 2, "004466")
+            set_pixel(pixels, cx - i, cy + 2, "00DD00")
 
 
 # ─── Renderers ────────────────────────────────────────────────────────────
 def render_walk(frame, colors, bg=OFF, fast=False):
-    """Pace left↔right across the matrix."""
+    """Pace left↔right across the matrix (wall-clock timed)."""
     X_MIN, X_MAX = -3, 6
     span = X_MAX - X_MIN + 1            # 10 positions per direction
     cycle = span * 2                    # 20 positions for a round trip
 
-    if fast:
-        pos = frame % cycle             # one step per frame
-        pose_step = frame
-    else:
-        pos = (frame // 2) % cycle      # one step per 2 frames (half speed)
-        pose_step = frame // 2
+    sps = WALK_FAST_STEPS_PER_SEC if fast else WALK_STEPS_PER_SEC
+    step = int(time.time() * sps)
 
+    pos = step % cycle
     if pos < span:
         x = X_MIN + pos
         flip = False
@@ -152,22 +156,20 @@ def render_walk(frame, colors, bg=OFF, fast=False):
         x = X_MAX - (pos - span)
         flip = True
 
-    pose = "normal" if pose_step % 2 == 0 else "raising_arm"
-    base_y = (HEIGHT - len(POSES[pose]["grid"])) // 2
-    y = base_y + (-1 if pose == "raising_arm" else 0)
-    return draw_sprite(pose, colors, x_offset=x, y_offset=y, bg=bg, flip_x=flip)
+    pose = "normal" if step % 2 == 0 else "raising_arm"
+    return draw_sprite(pose, colors, x_offset=x, bg=bg, flip_x=flip)
 
 
 def render_look_around(frame, colors, bg=OFF):
-    """Slow ~12s cycle: forward → down → forward → wink → forward."""
-    cycle = frame % (12 * FPS)
-    if cycle < 4 * FPS:
+    """Slow look-around cycle (wall-clock timed)."""
+    t = time.time() % LOOK_AROUND_CYCLE
+    if t < 4.0:
         pose = "normal"
-    elif cycle < 6 * FPS:
+    elif t < 6.0:
         pose = "looking_down"
-    elif cycle < 10 * FPS:
+    elif t < 10.0:
         pose = "normal"
-    elif cycle < 10 * FPS + 3:
+    elif t < 10.4:
         pose = "wink"
     else:
         pose = "normal"
@@ -182,8 +184,7 @@ def _dvd_position():
     x_max = max(WIDTH - sprite_w, 1)         # 3
     y_max = max(HEIGHT - sprite_h, 1)        # 5
 
-    # ~2.7 steps per second (one pixel move every ~0.375 s)
-    step = int(time.time() * 2.7)
+    step = int(time.time() * DVD_STEPS_PER_SEC)
 
     x_pos = step % (2 * x_max)
     if x_pos > x_max:
@@ -216,37 +217,40 @@ def render_dvd_bounce(frame, colors, bg=OFF):
 
 
 def render_sleeping(frame, colors, bg=OFF):
-    """Sleeping pose with a drifting Z above the head."""
+    """Sleeping pose with a drifting Z above the head (wall-clock timed)."""
     pixels = draw_sprite("sleeping", colors, bg=bg)
-    # Z drifts up-and-right over ~2 seconds, then resets
-    z_cycle = (2 * FPS)
-    z_step = frame % z_cycle
+    t = time.time() % Z_DRIFT_CYCLE
+    z_step = int(t / Z_DRIFT_CYCLE * 8)  # 8 sub-steps per cycle
     if z_step < 5:
-        # Position the Z relative to the centered sprite (~ x=10, y=2 starting)
         zx = 10 + z_step
         zy = 3 - z_step
         set_pixel(pixels, zx, zy, "FFFFFF")
     return pixels
 
 
+def _flash_on():
+    """Returns True during the 'on' half of the flash cycle."""
+    return int(time.time() / (FLASH_PERIOD / 2)) % 2 == 0
+
+
 def render_surprised_pulse(frame, colors, bg):
-    bg_now = bg if (frame // 2) % 2 == 0 else OFF
+    bg_now = bg if _flash_on() else OFF
     return draw_sprite("surprised", colors, bg=bg_now)
 
 
 def render_happy_dance(frame, colors, bg):
-    bg_now = bg if (frame // 2) % 2 == 0 else OFF
-    pose = "happy" if (frame // 4) % 2 == 0 else "dancing"
+    bg_now = bg if _flash_on() else OFF
+    pose = "happy" if int(time.time() / POSE_SWITCH_PERIOD) % 2 == 0 else "dancing"
     return draw_sprite(pose, colors, bg=bg_now)
 
 
 def render_angry_pulse(frame, colors, bg):
-    bg_now = bg if (frame // 2) % 2 == 0 else OFF
+    bg_now = bg if _flash_on() else OFF
     return draw_sprite("angry", colors, bg=bg_now)
 
 
 def render_compact_pulse(frame, colors, bg):
-    bg_now = bg if (frame // 2) % 2 == 0 else OFF
+    bg_now = bg if _flash_on() else OFF
     return draw_sprite("surprised", colors, bg=bg_now)
 
 
@@ -254,15 +258,12 @@ CAROUSEL_POSES = ["normal", "happy", "wink", "looking_down",
                   "dancing", "raising_arm", "cool", "surprised"]
 
 
+
 def render_boot(frame, colors, bg=OFF):
-    """Pose carousel: cycle through every pose for the boot animation."""
-    idx = (frame // 2) % len(CAROUSEL_POSES)  # ~250ms per pose at 8fps
+    """Pose carousel (wall-clock timed)."""
+    idx = int(time.time() / BOOT_POSE_PERIOD) % len(CAROUSEL_POSES)
     pose = CAROUSEL_POSES[idx]
-    # raising_arm is taller — anchor it differently to avoid clipping
-    y_offset = None
-    if pose == "raising_arm":
-        y_offset = HEIGHT - len(POSES[pose]["grid"])
-    return draw_sprite(pose, colors, y_offset=y_offset, bg=bg)
+    return draw_sprite(pose, colors, bg=bg)
 
 
 # ─── State aggregation ────────────────────────────────────────────────────

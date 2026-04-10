@@ -74,6 +74,8 @@ POSES = {
     "normal": {
         "w": 13,
         "grid": [
+            ".............",
+            ".............",
             "..BBBBBBBBB..",
             "..BBBBBBBBB..",
             "..BBBDBBDBB..",
@@ -92,6 +94,8 @@ POSES = {
         "grid": [
             ".............",
             ".............",
+            ".............",
+            ".............",
             "..BBBBBBBBB..",
             "BSBBBBBBBBBBS",
             "BSBBBBBBBBBBS",
@@ -101,12 +105,13 @@ POSES = {
             "..BBBBBBBBB..",
             "..S.S...S.S..",
             "..B.B...B.B..",
-            ".............",
         ],
     },
     "surprised": {
         "w": 13,
         "grid": [
+            ".............",
+            ".............",
             "..BBBBBBBBB..",
             "..BBWWBBWWB..",
             "..BBDWBBDWB..",
@@ -123,6 +128,8 @@ POSES = {
     "happy": {
         "w": 13,
         "grid": [
+            ".............",
+            ".............",
             "...BB...BB...",
             "...BB...BB...",
             "..BBBBBBBBB..",
@@ -139,6 +146,8 @@ POSES = {
     "wink": {
         "w": 13,
         "grid": [
+            ".............",
+            ".............",
             "..BBBBBBBBB..",
             "..BBBBBBBBB..",
             "..BBDDBBDDB..",
@@ -155,6 +164,8 @@ POSES = {
     "dancing": {
         "w": 13,
         "grid": [
+            ".............",
+            ".............",
             "..BBBBBBBBB..",
             "..BBBBBBBBB..",
             "..BBDDBBDDB..",
@@ -171,6 +182,8 @@ POSES = {
     "sleeping": {
         "w": 13,
         "grid": [
+            ".............",
+            ".............",
             "..BBBBBBBBB..",
             "..BBBBBBBBB..",
             "..BBBBBBBBB..",
@@ -187,6 +200,8 @@ POSES = {
     "cool": {
         "w": 13,
         "grid": [
+            ".............",
+            ".............",
             "..BBBBBBBBB..",
             "..SSSSBSSSS..",
             "..DDDDBDDDD..",
@@ -203,6 +218,8 @@ POSES = {
     "angry": {
         "w": 13,
         "grid": [
+            ".............",
+            ".............",
             "..BBBBBBBBB..",
             "..BSSBBBSSB..",
             "..BDDSBSDDB..",
