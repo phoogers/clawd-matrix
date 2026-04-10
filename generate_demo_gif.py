@@ -11,11 +11,18 @@ Output: docs/animations.gif
 
 import os
 import sys
+import time
 
 from PIL import Image, ImageDraw, ImageFont
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
+
+# Monkey-patch time.time so all wall-clock-based renderers advance
+# at the GIF's display rate instead of real time.
+_sim_time = [time.time()]
+_orig_time = time.time
+time.time = lambda: _sim_time[0]
 
 # Pull renderers + constants from the daemon so the GIF stays in sync.
 from clawd_daemon import (  # noqa: E402
@@ -170,7 +177,8 @@ def cell_origin(idx):
 
 
 # ─── Frame builder ────────────────────────────────────────────────────────
-def build_frame(frame_idx):
+def build_frame(frame_idx, sim_start):
+    _sim_time[0] = sim_start + frame_idx * (1.0 / FPS)
     img = Image.new("RGB", (IMG_W, IMG_H), BG_COLOR)
     draw = ImageDraw.Draw(img)
 
@@ -229,9 +237,11 @@ def main():
     os.makedirs(out_dir, exist_ok=True)
     out_path = os.path.join(out_dir, "animations.gif")
 
-    frames = [build_frame(f) for f in range(DURATION_FRAMES)]
+    sim_start = _orig_time()
+    frames = [build_frame(f, sim_start) for f in range(DURATION_FRAMES)]
 
-    # Save as optimized palette GIF. 125ms per frame = 8 fps.
+    time.time = _orig_time  # restore real time
+
     frames[0].save(
         out_path,
         save_all=True,
