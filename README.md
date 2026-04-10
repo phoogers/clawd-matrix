@@ -9,7 +9,7 @@ When Claude Code finishes responding, asks for permission, or hits an error, you
 
 Both modules are independent — use one, the other, or both.
 
-<video src="docs/demo.mp4" autoplay loop muted playsinline width="600"></video>
+https://github.com/user-attachments/assets/baba39d5-bb45-434a-8811-dd4aa0016c5b
 
 ![Clawd animation states](docs/animations.gif)
 
