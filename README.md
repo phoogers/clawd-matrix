@@ -9,6 +9,8 @@ When Claude Code finishes responding, asks for permission, or hits an error, you
 
 Both modules are independent — use one, the other, or both.
 
+<video src="docs/demo.mp4" autoplay loop muted playsinline width="600"></video>
+
 ![Clawd animation states](docs/animations.gif)
 
 > The 9 states shown above are exactly what the daemon renders to your matrix — one process handles every Claude Code session on your machine. See [Features](#features) for what triggers each state.
