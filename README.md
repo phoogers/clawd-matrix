@@ -1,4 +1,4 @@
-# claudenotify
+# clawd-matrix
 
 Real-world notifications for [Claude Code](https://docs.claude.com/en/docs/claude-code) using a smart light and a 16×16 LED matrix.
 
@@ -111,8 +111,8 @@ No third-party Python packages needed — the daemon uses only the standard libr
 ### 1. Clone the repo
 
 ```bash
-git clone https://github.com/phoogers/claudenotify.git
-cd claudenotify
+git clone https://github.com/phoogers/clawd-matrix.git
+cd clawd-matrix
 ```
 
 (or copy the files anywhere you like — just remember the absolute path)
@@ -178,7 +178,7 @@ Add the following to your Claude Code settings file. You can put it in any of:
 - `~/.claude/settings.json` — applies to **all** Claude Code sessions on your machine.
 - `<project>/.claude/settings.json` — applies only to a specific project.
 
-Replace `/absolute/path/to/claudenotify` with the actual path where you cloned the repo. On Windows, forward slashes work fine (e.g. `E:/projects/claudenotify`).
+Replace `/absolute/path/to/clawd-matrix` with the actual path where you cloned the repo. On Windows, forward slashes work fine (e.g. `E:/projects/clawd-matrix`).
 
 ```jsonc
 {
@@ -186,74 +186,74 @@ Replace `/absolute/path/to/claudenotify` with the actual path where you cloned t
     "Stop": [
       {
         "hooks": [
-          { "type": "command", "command": "bash /absolute/path/to/claudenotify/flash.sh", "async": true },
-          { "type": "command", "command": "python /absolute/path/to/claudenotify/clawd_set.py done", "async": true }
+          { "type": "command", "command": "bash /absolute/path/to/clawd-matrix/flash.sh", "async": true },
+          { "type": "command", "command": "python /absolute/path/to/clawd-matrix/clawd_set.py done", "async": true }
         ]
       }
     ],
     "StopFailure": [
       {
         "hooks": [
-          { "type": "command", "command": "python /absolute/path/to/claudenotify/clawd_set.py error", "async": true }
+          { "type": "command", "command": "python /absolute/path/to/clawd-matrix/clawd_set.py error", "async": true }
         ]
       }
     ],
     "PermissionRequest": [
       {
         "hooks": [
-          { "type": "command", "command": "bash /absolute/path/to/claudenotify/flash.sh red", "async": true },
-          { "type": "command", "command": "python /absolute/path/to/claudenotify/clawd_set.py permission", "async": true }
+          { "type": "command", "command": "bash /absolute/path/to/clawd-matrix/flash.sh red", "async": true },
+          { "type": "command", "command": "python /absolute/path/to/clawd-matrix/clawd_set.py permission", "async": true }
         ]
       }
     ],
     "UserPromptSubmit": [
       {
         "hooks": [
-          { "type": "command", "command": "bash /absolute/path/to/claudenotify/flash_stop.sh", "async": true },
-          { "type": "command", "command": "python /absolute/path/to/claudenotify/clawd_set.py working", "async": true }
+          { "type": "command", "command": "bash /absolute/path/to/clawd-matrix/flash_stop.sh", "async": true },
+          { "type": "command", "command": "python /absolute/path/to/clawd-matrix/clawd_set.py working", "async": true }
         ]
       }
     ],
     "PostToolUse": [
       {
         "hooks": [
-          { "type": "command", "command": "bash /absolute/path/to/claudenotify/flash_stop.sh", "async": true },
-          { "type": "command", "command": "python /absolute/path/to/claudenotify/clawd_set.py working", "async": true }
+          { "type": "command", "command": "bash /absolute/path/to/clawd-matrix/flash_stop.sh", "async": true },
+          { "type": "command", "command": "python /absolute/path/to/clawd-matrix/clawd_set.py working", "async": true }
         ]
       }
     ],
     "SessionStart": [
       {
         "hooks": [
-          { "type": "command", "command": "python /absolute/path/to/claudenotify/clawd_set.py boot", "async": true }
+          { "type": "command", "command": "python /absolute/path/to/clawd-matrix/clawd_set.py boot", "async": true }
         ]
       }
     ],
     "SessionEnd": [
       {
         "hooks": [
-          { "type": "command", "command": "python /absolute/path/to/claudenotify/clawd_set.py session_end", "async": true }
+          { "type": "command", "command": "python /absolute/path/to/clawd-matrix/clawd_set.py session_end", "async": true }
         ]
       }
     ],
     "SubagentStart": [
       {
         "hooks": [
-          { "type": "command", "command": "python /absolute/path/to/claudenotify/clawd_set.py subagent_start", "async": true }
+          { "type": "command", "command": "python /absolute/path/to/clawd-matrix/clawd_set.py subagent_start", "async": true }
         ]
       }
     ],
     "SubagentStop": [
       {
         "hooks": [
-          { "type": "command", "command": "python /absolute/path/to/claudenotify/clawd_set.py subagent_stop", "async": true }
+          { "type": "command", "command": "python /absolute/path/to/clawd-matrix/clawd_set.py subagent_stop", "async": true }
         ]
       }
     ],
     "PreCompact": [
       {
         "hooks": [
-          { "type": "command", "command": "python /absolute/path/to/claudenotify/clawd_set.py compact", "async": true }
+          { "type": "command", "command": "python /absolute/path/to/clawd-matrix/clawd_set.py compact", "async": true }
         ]
       }
     ]
@@ -282,7 +282,7 @@ Add to your shell init or use systemd / launchd. Minimal example for systemd (`~
 Description=Clawd animation daemon
 
 [Service]
-ExecStart=/usr/bin/python3 /absolute/path/to/claudenotify/clawd_daemon.py
+ExecStart=/usr/bin/python3 /absolute/path/to/clawd-matrix/clawd_daemon.py
 Restart=on-failure
 
 [Install]
@@ -431,7 +431,7 @@ All sprites are normalized to 13×13 pixels (13 wide, 13 rows tall with top-padd
 ## File structure
 
 ```
-claudenotify/
+clawd-matrix/
 ├── README.md                ← you are here
 ├── .env.example             ← copy to .env and fill in
 ├── .gitignore
